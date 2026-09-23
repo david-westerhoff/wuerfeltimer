@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Würfeltimer</title>
+<meta name="description" content="Bunter Speedcubing-Timer mit Scrambles, WCA-Inspektion, Ao5, Ao12, Ao50, Ao100 und Zeittabelle.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='14' height='14' rx='3' fill='%23e8322f'/%3E%3Crect x='17' y='1' width='14' height='14' rx='3' fill='%2316b55b'/%3E%3Crect x='1' y='17' width='14' height='14' rx='3' fill='%231e6bff'/%3E%3Crect x='17' y='17' width='14' height='14' rx='3' fill='%23ffd400'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0d0f1a;
+    --panel: rgba(255,255,255,0.06);
+    --panel-border: rgba(255,255,255,0.12);
+    --text: #f3f4fa;
+    --muted: #a3a8c3;
+    --red: #e8322f;
+    --orange: #ff7a00;
+    --yellow: #ffd400;
+    --green: #16b55b;
+    --blue: #1e6bff;
+    --white: #f5f5f5;
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ---------- bunter, bewegter Hintergrund ---------- */
+  .blobs { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+  .blob {
+    position: absolute; width: 46vmax; height: 46vmax; border-radius: 50%;
+    filter: blur(80px); opacity: 0.30; mix-blend-mode: screen;
+    animation: drift 26s ease-in-out infinite alternate;
+  }
+  .blob:nth-child(1) { background: var(--red);    top: -12vmax; left: -10vmax; }
+  .blob:nth-child(2) { background: var(--blue);   top: -8vmax;  right: -14vmax; animation-duration: 31s; animation-delay: -6s; }
+  .blob:nth-child(3) { background: var(--green);  bottom: -16vmax; left: 10vmax; animation-duration: 29s; animation-delay: -12s; }
+  .blob:nth-child(4) { background: var(--yellow); bottom: -14vmax; right: 4vmax; animation-duration: 35s; animation-delay: -3s; opacity: 0.2; }
+  .blob:nth-child(5) { background: var(--orange); top: 30vh; left: 40vw; width: 30vmax; height: 30vmax; animation-duration: 24s; animation-delay: -9s; opacity: 0.18; }
+  @keyframes drift {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(8vw, 6vh) scale(1.15); }
+    100% { transform: translate(-6vw, 10vh) scale(0.9); }
+  }
+
+  .app { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 16px; }
+
+  /* ---------- Kopfzeile ---------- */
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo { display: grid; grid-template-columns: repeat(3, 10px); gap: 3px; }
+  .logo span { width: 10px; height: 10px; border-radius: 3px; animation: logo-pop 4s ease-in-out infinite; }
+  @keyframes logo-pop { 0%, 80%, 100% { transform: scale(1); } 90% { transform: scale(1.35); } }
+  h1 {
+    margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: 0.02em;
+    background: linear-gradient(90deg, var(--red), var(--orange), var(--yellow), var(--green), var(--blue), var(--red));
+    background-size: 300% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: rainbow 8s linear infinite;
+  }
+  @keyframes rainbow { to { background-position: 300% 0; } }
+  .settings { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .btn {
+    font: inherit; font-size: 0.9rem; color: var(--text); cursor: pointer;
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 999px;
+    padding: 8px 14px; transition: transform .15s, background .2s, border-color .2s;
+  }
+  .btn:hover { transform: translateY(-2px); background: rgba(255,255,255,0.12); }
+  .btn:active { transform: translateY(0) scale(0.97); }
+  .btn.on { border-color: var(--green); background: rgba(22,181,91,0.18); }
+  .btn.danger:hover { border-color: var(--red); background: rgba(232,50,47,0.2); }
+
+  /* ---------- Scramble ---------- */
+  .scramble-bar {
+    margin-top: 16px; padding: 14px 18px; border-radius: var(--radius);
+    background: var(--panel); border: 1px solid var(--panel-border);
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    backdrop-filter: blur(10px);
+  }
+  .scramble {
+    flex: 1 1 300px; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: clamp(1rem, 2.2vw, 1.45rem); letter-spacing: 0.04em; word-spacing: 0.25em;
+    line-height: 1.5;
+  }
+  .scramble .mv { display: inline-block; animation: mv-in .45s cubic-bezier(.2,1.4,.4,1) both; }
+  @keyframes mv-in { from { opacity: 0; transform: translateY(10px) scale(0.6); } to { opacity: 1; transform: none; } }
+
+  /* ---------- Layout ---------- */
+  .main { display: grid; grid-template-columns: 1fr 380px; gap: 16px; margin-top: 16px; }
+  @media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+    padding: 16px; backdrop-filter: blur(10px);
+  }
+
+  /* ---------- Timer ---------- */
+  .stage {
+    position: relative; min-height: 420px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px; cursor: pointer; user-select: none;
+    touch-action: manipulation;
+  }
+  .ring {
+    position: absolute; width: min(420px, 80vw); aspect-ratio: 1; border-radius: 50%;
+    background: conic-gradient(var(--orange) calc(var(--p, 0) * 1turn), transparent 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 10px), #000 calc(100% - 9px));
+            mask: radial-gradient(farthest-side, transparent calc(100% - 10px), #000 calc(100% - 9px));
+    opacity: 0; transition: opacity .3s;
+  }
+  body.inspecting .ring { opacity: 1; }
+  .time {
+    position: relative; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: clamp(4rem, 13vw, 9rem); font-weight: 700; font-variant-numeric: tabular-nums;
+    line-height: 1; transition: color .25s, text-shadow .25s, transform .25s;
+    text-shadow: 0 0 40px rgba(255,255,255,0.15);
+  }
+  body.inspecting .time { color: var(--orange); text-shadow: 0 0 50px rgba(255,122,0,0.55); }
+  body.inspecting.warn .time { color: var(--red); animation: pulse .5s ease-in-out infinite alternate; }
+  body.running .time { color: var(--green); text-shadow: 0 0 60px rgba(22,181,91,0.6); }
+  body.stopped .time { animation: land .5s cubic-bezier(.2,1.6,.4,1); }
+  @keyframes pulse { to { transform: scale(1.06); } }
+  @keyframes land { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
+
+  .hint { color: var(--muted); font-size: 0.95rem; text-align: center; min-height: 1.4em; position: relative; }
+  .hint kbd {
+    font-family: inherit; font-size: 0.85em; padding: 2px 8px; border-radius: 6px;
+    border: 1px solid var(--panel-border); background: rgba(255,255,255,0.08);
+  }
+  .last-actions { display: flex; gap: 8px; position: relative; min-height: 38px; }
+  .badge {
+    position: absolute; top: 18%; padding: 8px 18px; border-radius: 999px; font-weight: 800;
+    background: linear-gradient(90deg, var(--yellow), var(--orange)); color: #1a1200;
+    opacity: 0; transform: translateY(10px) scale(0.8); pointer-events: none;
+  }
+  .badge.show { animation: badge 2.6s ease forwards; }
+  @keyframes badge {
+    0% { opacity: 0; transform: translateY(10px) scale(0.8); }
+    12% { opacity: 1; transform: translateY(0) scale(1.08); }
+    20% { transform: scale(1); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-14px); }
+  }
+
+  /* Während der Messung alles außer der Zeit ausblenden */
+  body.running .fade-when-running, body.inspecting .fade-when-running { opacity: 0.08; transition: opacity .3s; pointer-events: none; }
+  .fade-when-running { transition: opacity .4s; }
+
+  /* ---------- Statistik ---------- */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat {
+    border-radius: 12px; padding: 10px; text-align: center; position: relative; overflow: hidden;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--panel-border);
+    transition: transform .2s;
+  }
+  .stat:hover { transform: translateY(-3px); }
+  .stat::before { content: ""; position: absolute; left: 0; top: 0; right: 0; height: 3px; background: var(--c); }
+  .stat .k { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .stat .v { font-family: ui-monospace, Consolas, monospace; font-size: 1.15rem; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .stat .b { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+  .stat.flash { animation: flash .8s ease; }
+  @keyframes flash { 0% { background: var(--c); } 100% { background: rgba(255,255,255,0.05); } }
+
+  h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin: 0 0 10px; font-weight: 700; }
+  .side { display: flex; flex-direction: column; gap: 16px; }
+
+  .net { display: flex; justify-content: center; }
+  .net svg { width: 100%; max-width: 300px; height: auto; }
+  .net rect { transition: fill .35s; }
+
+  /* ---------- Tabelle ---------- */
+  .table-wrap { max-height: 360px; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { position: sticky; top: 0; background: #1a1d2e; color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; text-align: right; padding: 8px 6px; }
+  th:first-child, td:first-child { text-align: left; }
+  td { padding: 7px 6px; text-align: right; font-family: ui-monospace, Consolas, monospace; font-size: 0.92rem; border-top: 1px solid rgba(255,255,255,0.06); }
+  tr.row { cursor: pointer; transition: background .2s; }
+  tr.row:hover { background: rgba(255,255,255,0.06); }
+  tr.new { animation: row-in .6s cubic-bezier(.2,1.3,.4,1); }
+  @keyframes row-in { from { opacity: 0; transform: translateX(30px); background: rgba(22,181,91,0.35); } to { opacity: 1; transform: none; } }
+  td.best { color: var(--yellow); font-weight: 700; }
+  td.dnf { color: var(--red); }
+  .row-actions button {
+    font: inherit; font-size: 0.75rem; cursor: pointer; color: var(--muted); background: none;
+    border: 1px solid transparent; border-radius: 6px; padding: 1px 5px;
+  }
+  .row-actions button:hover { color: var(--text); border-color: var(--panel-border); }
+  .row-actions button.active { color: var(--orange); }
+  .empty { color: var(--muted); text-align: center; padding: 24px 0; font-family: inherit; }
+  .table-tools { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+  /* ---------- Detail-Dialog ---------- */
+  dialog {
+    border: 1px solid var(--panel-border); border-radius: var(--radius); background: #161a2b; color: var(--text);
+    padding: 20px; max-width: min(520px, calc(100vw - 32px));
+  }
+  dialog::backdrop { background: rgba(0,0,0,0.55); backdrop-filter: blur(3px); }
+  dialog[open] { animation: pop .3s cubic-bezier(.2,1.4,.4,1); }
+  @keyframes pop { from { transform: scale(0.85); opacity: 0; } }
+  dialog h3 { margin: 0 0 6px; font-size: 1.6rem; font-family: ui-monospace, Consolas, monospace; }
+  dialog .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 12px; }
+  dialog .scr { font-family: ui-monospace, Consolas, monospace; background: rgba(255,255,255,0.06); padding: 10px 12px; border-radius: 10px; word-spacing: 0.25em; line-height: 1.5; }
+  dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+
+  /* ---------- Konfetti ---------- */
+  .confetti {
+    position: fixed; width: 12px; height: 12px; border-radius: 3px; z-index: 50; pointer-events: none;
+    animation: fly var(--d, 1.1s) cubic-bezier(.15,.7,.35,1) forwards;
+  }
+  @keyframes fly {
+    0%   { transform: translate(-50%, -50%) rotate(0) scale(1); opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) rotate(var(--r)) scale(0.4); opacity: 0; }
+  }
+
+  footer { color: var(--muted); font-size: 0.8rem; text-align: center; margin: 24px 0 8px; line-height: 1.6; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="blobs" aria-hidden="true"><div class="blob"></div><div class="blob"></div><div class="blob"></div><div class="blob"></div><div class="blob"></div></div>
+
+<div class="app">
+  <header class="fade-when-running">
+    <div class="brand">
+      <div class="logo" aria-hidden="true" id="logo"></div>
+      <h1>Würfeltimer</h1>
+    </div>
+    <div class="settings">
+      <button class="btn" id="btnInspection" title="15 Sekunden Inspektion nach WCA-Vorbild">Inspektion: an</button>
+      <button class="btn" id="btnHide" title="Zeit während des Lösens ausblenden">Zeit sichtbar</button>
+    </div>
+  </header>
+
+  <section class="scramble-bar fade-when-running" aria-label="Scramble">
+    <div class="scramble" id="scramble"></div>
+    <button class="btn" id="btnNewScramble" title="Neuen Scramble erzeugen">↻ Neu</button>
+    <button class="btn" id="btnCopy" title="Scramble kopieren">Kopieren</button>
+  </section>
+
+  <div class="main">
+    <section class="panel stage" id="stage" aria-live="polite">
+      <div class="ring" id="ring"></div>
+      <div class="badge" id="badge">Neue Bestzeit!</div>
+      <div class="time" id="time">0.00</div>
+      <div class="hint" id="hint"></div>
+      <div class="last-actions fade-when-running" id="lastActions"></div>
+    </section>
+
+    <aside class="side fade-when-running">
+      <section class="panel">
+        <h2>Statistik</h2>
+        <div class="stats" id="stats"></div>
+      </section>
+      <section class="panel">
+        <h2>So sieht der Würfel nach dem Scramble aus</h2>
+        <div class="net" id="net"></div>
+      </section>
+    </aside>
+  </div>
+
+  <section class="panel fade-when-running" style="margin-top:16px">
+    <h2>Zeiten</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Zeit</th><th>Ao5</th><th>Ao12</th><th></th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="table-tools">
+      <button class="btn" id="btnExport">Als CSV exportieren</button>
+      <button class="btn danger" id="btnClear">Alle Zeiten löschen</button>
+    </div>
+  </section>
+
+  <footer class="fade-when-running">
+    Leertaste oder Tippen auf die Uhr: Inspektion starten → Messung starten → beliebige Taste stoppt. Esc bricht ab.<br>
+    Scrambles werden zufällig erzeugt. Die Zeiten bleiben nur in diesem Browser gespeichert; es werden keine Daten übertragen und keine externen Dienste geladen.
+  </footer>
+</div>
+
+<dialog id="detail">
+  <h3 id="dTime"></h3>
+  <div class="meta" id="dMeta"></div>
+  <div class="scr" id="dScr"></div>
+  <div class="actions">
+    <button class="btn" id="dOk">OK</button>
+    <button class="btn" id="dPlus2">+2</button>
+    <button class="btn" id="dDnf">DNF</button>
+    <button class="btn danger" id="dDel">Löschen</button>
+    <button class="btn" id="dClose">Schließen</button>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  "use strict";
+
+  const COLORS = { U: "#f5f5f5", D: "#ffd400", F: "#16b55b", B: "#1e6bff", R: "#e8322f", L: "#ff7a00" };
+  const STORE_KEY = "wuerfeltimer.v1";
+
+  // ---------- Speicher (nur lokal im Browser) ----------
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch (e) { return null; }
+  }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({ solves, settings })); } catch (e) {}
+  }
+  const stored = load() || {};
+  const solves = Array.isArray(stored.solves) ? stored.solves : [];
+  const settings = Object.assign({ inspection: true, hide: false }, stored.settings || {});
+
+  // ---------- Zufall ----------
+  function rand(n) {
+    const a = new Uint32Array(1);
+    crypto.getRandomValues(a);
+    return a[0] % n;
+  }
+
+  // ---------- Scramble: 20 Züge, keine doppelte Seite, kein R L R ----------
+  const AXIS = { U: 1, D: 1, R: 0, L: 0, F: 2, B: 2 };
+  function genScramble(len = 20) {
+    const faces = "UDRLFB", mods = ["", "'", "2"], out = [];
+    let last = null, prev = null;
+    while (out.length < len) {
+      const f = faces[rand(6)];
+      if (f === last) continue;
+      if (last && AXIS[f] === AXIS[last] && f === prev) continue;
+      out.push(f + mods[rand(3)]);
+      prev = last; last = f;
+    }
+    return out;
+  }
+
+  // ---------- Würfel-Simulation für die Vorschau ----------
+  const FACES = { U: [1, 1], D: [1, -1], R: [0, 1], L: [0, -1], F: [2, 1], B: [2, -1] };
+  function solvedCube() {
+    const st = [];
+    for (const f in FACES) {
+      const [ax, sg] = FACES[f];
+      const others = [0, 1, 2].filter(i => i !== ax);
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+        const p = [0, 0, 0]; p[ax] = sg; p[others[0]] = a; p[others[1]] = b;
+        const n = [0, 0, 0]; n[ax] = sg;
+        st.push({ p, n, c: f });
+      }
+    }
+    return st;
+  }
+  // Drehung um 90° * s um die Achse ax (rechte-Hand-Regel)
+  function rot(v, ax, s) {
+    const [x, y, z] = v;
+    if (ax === 0) return [x, -s * z + 0, s * y + 0];
+    if (ax === 1) return [s * z + 0, y, -s * x + 0];
+    return [-s * y + 0, s * x + 0, z];
+  }
+  function turn(st, face, times) {
+    const [ax, sg] = FACES[face];
+    const s = -sg; // im Uhrzeigersinn, von außen auf die Seite geschaut
+    for (let t = 0; t < times; t++) {
+      for (const k of st) if (k.p[ax] === sg) { k.p = rot(k.p, ax, s); k.n = rot(k.n, ax, s); }
+    }
+  }
+  function faceOfNormal(n) {
+    if (n[0] === 1) return "R"; if (n[0] === -1) return "L";
+    if (n[1] === 1) return "U"; if (n[1] === -1) return "D";
+    if (n[2] === 1) return "F"; return "B";
+  }
+  function cell(face, p) {
+    switch (face) {
+      case "U": return [p[2] + 1, p[0] + 1];
+      case "D": return [1 - p[2], p[0] + 1];
+      case "F": return [1 - p[1], p[0] + 1];
+      case "B": return [1 - p[1], 1 - p[0]];
+      case "R": return [1 - p[1], 1 - p[2]];
+      case "L": return [1 - p[1], p[2] + 1];
+    }
+  }
+  const NET_POS = { U: [1, 0], L: [0, 1], F: [1, 1], R: [2, 1], B: [3, 1], D: [1, 2] };
+  function renderNet(moves) {
+    const st = solvedCube();
+    for (const m of moves) turn(st, m[0], m[1] === "2" ? 2 : m[1] === "'" ? 3 : 1);
+    const C = 10, G = 1.2;
+    let rects = "";
+    for (const k of st) {
+      const f = faceOfNormal(k.n);
+      const [r, c] = cell(f, k.p);
+      const [bx, by] = NET_POS[f];
+      const x = bx * (3 * C + G * 2) + c * C, y = by * (3 * C + G * 2) + r * C;
+      rects += `<rect x="${x + 0.5}" y="${y + 0.5}" width="${C - 1}" height="${C - 1}" rx="1.6" fill="${COLORS[k.c]}"/>`;
+    }
+    const W = 4 * (3 * C + G * 2), H = 3 * (3 * C + G * 2);
+    document.getElementById("net").innerHTML =
+      `<svg viewBox="-1 -1 ${W + 2} ${H + 2}" role="img" aria-label="Würfelnetz nach dem Scramble">${rects}</svg>`;
+  }
+
+  // ---------- Formatierung und Statistik ----------
+  const val = s => s.pen === "DNF" ? Infinity : s.ms + (s.pen === "+2" ? 2000 : 0);
+  function fmt(ms, round) {
+    if (ms === null || ms === undefined) return "–";
+    if (ms === Infinity) return "DNF";
+    const cs = round ? Math.round(ms / 10) : Math.floor(ms / 10);
+    const m = Math.floor(cs / 6000), s = Math.floor((cs % 6000) / 100), c = cs % 100;
+    const cc = String(c).padStart(2, "0");
+    return m > 0 ? `${m}:${String(s).padStart(2, "0")}.${cc}` : `${s}.${cc}`;
+  }
+  const fmtSolve = s => s.pen === "DNF" ? "DNF" : fmt(val(s)) + (s.pen === "+2" ? "+" : "");
+
+  // Durchschnitt nach WCA/csTimer-Art: je 5 % oben und unten streichen (Ao5: je 1)
+  function average(list) {
+    const n = list.length;
+    const trim = Math.ceil(n * 0.05);
+    const v = list.map(val).sort((a, b) => a - b).slice(trim, n - trim);
+    if (v.some(x => x === Infinity)) return Infinity;
+    return v.reduce((a, b) => a + b, 0) / v.length;
+  }
+  function mean(list) {
+    const v = list.map(val);
+    if (v.some(x => x === Infinity)) return Infinity;
+    return v.reduce((a, b) => a + b, 0) / v.length;
+  }
+  function aoAt(i, n) { return i + 1 < n ? null : average(solves.slice(i + 1 - n, i + 1)); }
+  function bestAo(n) {
+    let best = null;
+    for (let i = n - 1; i < solves.length; i++) {
+      const a = aoAt(i, n);
+      if (best === null || a < best) best = a;
+    }
+    return best;
+  }
+
+  // ---------- Zustand ----------
+  let state = "idle"; // idle | inspecting | running | stopped
+  let scramble = genScramble();
+  let startT = 0, inspStart = 0, inspPenalty = null, raf = 0, lastStopAt = 0;
+
+  const $ = id => document.getElementById(id);
+  const timeEl = $("time"), hintEl = $("hint"), ringEl = $("ring");
+
+  function setState(s) {
+    state = s;
+    document.body.classList.remove("idle", "inspecting", "running", "stopped", "warn");
+    document.body.classList.add(s);
+    updateHint();
+  }
+  function updateHint() {
+    const map = {
+      idle: settings.inspection
+        ? "<kbd>Leertaste</kbd> startet die Inspektion, danach startet <kbd>Leertaste</kbd> die Uhr"
+        : "<kbd>Leertaste</kbd> startet die Uhr",
+      inspecting: "Inspektion läuft · <kbd>Leertaste</kbd> startet die Uhr",
+      running: "Beliebige Taste stoppt",
+      stopped: settings.inspection
+        ? "<kbd>Leertaste</kbd> für den nächsten Solve"
+        : "<kbd>Leertaste</kbd> startet die Uhr",
+    };
+    hintEl.innerHTML = map[state];
+  }
+
+  function showScramble() {
+    $("scramble").innerHTML = scramble
+      .map((m, i) => `<span class="mv" style="animation-delay:${i * 25}ms">${m}</span>`).join(" ");
+    renderNet(scramble);
+  }
+  function newScramble() { scramble = genScramble(); showScramble(); }
+
+  // ---------- Ablauf ----------
+  function startInspection() {
+    inspStart = performance.now();
+    inspPenalty = null;
+    setState("inspecting");
+    tickInspection();
+  }
+  function tickInspection() {
+    if (state !== "inspecting") return;
+    const el = (performance.now() - inspStart) / 1000;
+    ringEl.style.setProperty("--p", Math.max(0, 1 - el / 15));
+    if (el < 15) {
+      timeEl.textContent = String(Math.ceil(15 - el));
+      document.body.classList.toggle("warn", el >= 12);
+      hintEl.innerHTML = el >= 12 ? "12 Sekunden! · <kbd>Leertaste</kbd> startet die Uhr"
+        : el >= 8 ? "8 Sekunden! · <kbd>Leertaste</kbd> startet die Uhr"
+        : "Inspektion läuft · <kbd>Leertaste</kbd> startet die Uhr";
+    } else if (el < 17) {
+      timeEl.textContent = "+2";
+      document.body.classList.add("warn");
+    } else {
+      timeEl.textContent = "DNF";
+    }
+    raf = requestAnimationFrame(tickInspection);
+  }
+  function startTimer() {
+    if (state === "inspecting") {
+      const el = (performance.now() - inspStart) / 1000;
+      inspPenalty = el >= 17 ? "DNF" : el >= 15 ? "+2" : null;
+      cancelAnimationFrame(raf);
+    } else inspPenalty = null;
+    startT = performance.now();
+    setState("running");
+    tickRun();
+  }
+  function tickRun() {
+    if (state !== "running") return;
+    timeEl.textContent = settings.hide ? "Löse …" : fmt(performance.now() - startT);
+    raf = requestAnimationFrame(tickRun);
+  }
+  function stopTimer() {
+    const ms = Math.round(performance.now() - startT);
+    cancelAnimationFrame(raf);
+    lastStopAt = performance.now();
+    const prevBest = solves.length ? Math.min(...solves.map(val)) : null;
+    const prevBestAo5 = bestAo(5);
+    const solve = { ms, pen: inspPenalty, scr: scramble.join(" "), at: Date.now() };
+    solves.push(solve);
+    save();
+    setState("stopped");
+    timeEl.textContent = fmtSolve(solve);
+    const v = val(solve);
+    const rect = timeEl.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    const ao5 = aoAt(solves.length - 1, 5);
+    if (prevBest !== null && v < prevBest) {
+      burst(cx, cy, 90, 1.6);
+      showBadge("Neue Bestzeit!");
+    } else if (prevBestAo5 !== null && ao5 !== null && ao5 < prevBestAo5) {
+      burst(cx, cy, 60, 1.3);
+      showBadge("Neuer bester Ao5!");
+    } else if (v !== Infinity) {
+      burst(cx, cy, 28, 0.9);
+    }
+    renderAll(true);
+    newScramble();
+  }
+  function cancel() {
+    cancelAnimationFrame(raf);
+    setState("idle");
+    timeEl.textContent = solves.length ? fmtSolve(solves[solves.length - 1]) : "0.00";
+  }
+
+  function press() {
+    if (state === "running") return stopTimer();
+    // kurze Sperre, damit ein Doppelanschlag nicht sofort neu startet
+    if (performance.now() - lastStopAt < 400) return;
+    if (state === "inspecting") return startTimer();
+    if (settings.inspection) startInspection(); else startTimer();
+  }
+
+  // ---------- Eingaben ----------
+  window.addEventListener("keydown", e => {
+    if ($("detail").open) return;
+    if (e.repeat) { if (e.code === "Space") e.preventDefault(); return; }
+    if (state === "running") {
+      if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
+      e.preventDefault();
+      return stopTimer();
+    }
+    if (e.code === "Escape" && state === "inspecting") return cancel();
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      press();
+    }
+  });
+  $("stage").addEventListener("pointerdown", e => {
+    if (e.target.closest("button")) return;
+    e.preventDefault();
+    press();
+  });
+
+  // ---------- Konfetti und Abzeichen ----------
+  function burst(x, y, count, power) {
+    const cols = Object.values(COLORS);
+    for (let i = 0; i < count; i++) {
+      const d = document.createElement("div");
+      d.className = "confetti";
+      const ang = Math.random() * Math.PI * 2, dist = (120 + Math.random() * 260) * power;
+      d.style.left = x + "px"; d.style.top = y + "px";
+      d.style.background = cols[i % cols.length];
+      d.style.setProperty("--x", Math.cos(ang) * dist + "px");
+      d.style.setProperty("--y", Math.sin(ang) * dist + "px");
+      d.style.setProperty("--r", (Math.random() * 720 - 360) + "deg");
+      d.style.setProperty("--d", (0.8 + Math.random() * 0.7) + "s");
+      document.body.appendChild(d);
+      d.addEventListener("animationend", () => d.remove());
+    }
+  }
+  function showBadge(text) {
+    const b = $("badge");
+    b.textContent = text;
+    b.classList.remove("show"); void b.offsetWidth; b.classList.add("show");
+  }
+
+  // ---------- Darstellung ----------
+  let lastStats = {};
+  function renderStats(animate) {
+    const n = solves.length;
+    const valid = solves.filter(s => s.pen !== "DNF");
+    const best = valid.length ? Math.min(...valid.map(val)) : null;
+    const worst = n ? Math.max(...solves.map(val)) : null;
+    const items = [
+      { k: "Aktuell", v: n ? fmtSolve(solves[n - 1]) : "–", b: "", c: "var(--white)" },
+      { k: "Bestzeit", v: fmt(best), b: "", c: "var(--yellow)" },
+      { k: "Mo3", v: fmt(n >= 3 ? mean(solves.slice(-3)) : null, true), b: "", c: "var(--orange)" },
+      { k: "Ao5", v: fmt(aoAt(n - 1, 5), true), b: "beste " + fmt(bestAo(5), true), c: "var(--red)" },
+      { k: "Ao12", v: fmt(aoAt(n - 1, 12), true), b: "beste " + fmt(bestAo(12), true), c: "var(--green)" },
+      { k: "Ao50", v: fmt(aoAt(n - 1, 50), true), b: "beste " + fmt(bestAo(50), true), c: "var(--blue)" },
+      { k: "Ao100", v: fmt(aoAt(n - 1, 100), true), b: "beste " + fmt(bestAo(100), true), c: "var(--orange)" },
+      { k: "Mittel", v: fmt(valid.length ? valid.reduce((a, s) => a + val(s), 0) / valid.length : null, true), b: "ohne DNF", c: "var(--green)" },
+      { k: "Solves", v: String(n), b: n ? "schlechteste " + fmt(worst) : "", c: "var(--blue)" },
+    ];
+    $("stats").innerHTML = items.map(it =>
+      `<div class="stat${animate && lastStats[it.k] !== undefined && lastStats[it.k] !== it.v ? " flash" : ""}" style="--c:${it.c}">
+         <div class="k">${it.k}</div><div class="v">${it.v}</div><div class="b">${it.b || "&nbsp;"}</div></div>`).join("");
+    lastStats = Object.fromEntries(items.map(it => [it.k, it.v]));
+  }
+
+  function renderTable(animate) {
+    const tb = $("tbody");
+    if (!solves.length) {
+      tb.innerHTML = `<tr><td colspan="5" class="empty">Noch keine Zeiten – drück die Leertaste und leg los!</td></tr>`;
+      return;
+    }
+    const valid = solves.filter(s => s.pen !== "DNF");
+    const best = valid.length ? Math.min(...valid.map(val)) : null;
+    let html = "";
+    for (let i = solves.length - 1; i >= 0; i--) {
+      const s = solves[i], v = val(s);
+      const cls = s.pen === "DNF" ? "dnf" : v === best ? "best" : "";
+      html += `<tr class="row${animate && i === solves.length - 1 ? " new" : ""}" data-i="${i}">
+        <td>${i + 1}</td>
+        <td class="${cls}">${fmtSolve(s)}</td>
+        <td>${fmt(aoAt(i, 5), true)}</td>
+        <td>${fmt(aoAt(i, 12), true)}</td>
+        <td class="row-actions">
+          <button data-a="+2" data-i="${i}" class="${s.pen === "+2" ? "active" : ""}" title="+2 umschalten">+2</button>
+          <button data-a="DNF" data-i="${i}" class="${s.pen === "DNF" ? "active" : ""}" title="DNF umschalten">DNF</button>
+          <button data-a="del" data-i="${i}" title="Löschen">✕</button>
+        </td></tr>`;
+    }
+    tb.innerHTML = html;
+  }
+
+  function renderLastActions() {
+    const box = $("lastActions");
+    if (!solves.length || state === "running" || state === "inspecting") { box.innerHTML = ""; return; }
+    const i = solves.length - 1, s = solves[i];
+    box.innerHTML = `
+      <button class="btn${s.pen === "+2" ? " on" : ""}" data-a="+2" data-i="${i}">+2</button>
+      <button class="btn${s.pen === "DNF" ? " on" : ""}" data-a="DNF" data-i="${i}">DNF</button>
+      <button class="btn danger" data-a="del" data-i="${i}">Löschen</button>`;
+  }
+
+  function renderAll(animate) {
+    renderStats(animate);
+    renderTable(animate);
+    renderLastActions();
+  }
+
+  function applyAction(a, i) {
+    const s = solves[i];
+    if (!s) return;
+    if (a === "del") {
+      if (!confirm(`Zeit #${i + 1} (${fmtSolve(s)}) löschen?`)) return;
+      solves.splice(i, 1);
+    } else if (a === "OK") s.pen = null;
+    else s.pen = s.pen === a ? null : a;
+    save();
+    if (state !== "running" && state !== "inspecting")
+      timeEl.textContent = solves.length ? fmtSolve(solves[solves.length - 1]) : "0.00";
+    renderAll(false);
+  }
+
+  document.addEventListener("click", e => {
+    const btn = e.target.closest("button[data-a]");
+    if (btn) { e.stopPropagation(); btn.blur(); return applyAction(btn.dataset.a, +btn.dataset.i); }
+    const row = e.target.closest("tr.row");
+    if (row) openDetail(+row.dataset.i);
+  });
+
+  // ---------- Detail-Dialog ----------
+  let detailIndex = -1;
+  function openDetail(i) {
+    const s = solves[i]; if (!s) return;
+    detailIndex = i;
+    $("dTime").textContent = `#${i + 1} · ${fmtSolve(s)}`;
+    const d = new Date(s.at);
+    $("dMeta").textContent = d.toLocaleString("de-DE") + (s.pen ? ` · Strafe: ${s.pen}` : "") +
+      ` · Ao5 ${fmt(aoAt(i, 5), true)} · Ao12 ${fmt(aoAt(i, 12), true)}`;
+    $("dScr").textContent = s.scr;
+    $("detail").showModal();
+  }
+  const closeDetail = () => $("detail").close();
+  $("dClose").onclick = closeDetail;
+  $("dOk").onclick = () => { applyAction("OK", detailIndex); closeDetail(); };
+  $("dPlus2").onclick = () => { applyAction("+2", detailIndex); closeDetail(); };
+  $("dDnf").onclick = () => { applyAction("DNF", detailIndex); closeDetail(); };
+  $("dDel").onclick = () => { closeDetail(); applyAction("del", detailIndex); };
+
+  // ---------- Knöpfe ----------
+  function syncSettingButtons() {
+    $("btnInspection").textContent = "Inspektion: " + (settings.inspection ? "an" : "aus");
+    $("btnInspection").classList.toggle("on", settings.inspection);
+    $("btnHide").textContent = settings.hide ? "Zeit verborgen" : "Zeit sichtbar";
+    $("btnHide").classList.toggle("on", settings.hide);
+    updateHint();
+  }
+  $("btnInspection").onclick = e => { settings.inspection = !settings.inspection; save(); syncSettingButtons(); e.currentTarget.blur(); };
+  $("btnHide").onclick = e => { settings.hide = !settings.hide; save(); syncSettingButtons(); e.currentTarget.blur(); };
+  $("btnNewScramble").onclick = e => { newScramble(); e.currentTarget.blur(); };
+  $("btnCopy").onclick = async e => {
+    const b = e.currentTarget; b.blur();
+    try { await navigator.clipboard.writeText(scramble.join(" ")); b.textContent = "Kopiert ✓"; }
+    catch (err) { b.textContent = "Nicht möglich"; }
+    setTimeout(() => b.textContent = "Kopieren", 1400);
+  };
+  $("btnClear").onclick = e => {
+    e.currentTarget.blur();
+    if (!solves.length || !confirm(`Alle ${solves.length} Zeiten löschen? Das lässt sich nicht rückgängig machen.`)) return;
+    solves.length = 0; save(); timeEl.textContent = "0.00"; renderAll(false);
+  };
+  $("btnExport").onclick = e => {
+    e.currentTarget.blur();
+    const rows = [["Nr", "Zeit_s", "Strafe", "Ao5", "Ao12", "Scramble", "Datum"]];
+    solves.forEach((s, i) => rows.push([
+      i + 1, (s.ms / 1000).toFixed(3), s.pen || "", fmt(aoAt(i, 5), true), fmt(aoAt(i, 12), true),
+      s.scr, new Date(s.at).toISOString(),
+    ]));
+    const csv = rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(";")).join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = "wuerfeltimer-zeiten.csv"; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  // ---------- Logo ----------
+  const logoCols = ["R", "F", "U", "L", "D", "B", "F", "U", "R"];
+  $("logo").innerHTML = logoCols.map((c, i) =>
+    `<span style="background:${COLORS[c]};animation-delay:${i * 0.18}s"></span>`).join("");
+
+  // ---------- Start ----------
+  syncSettingButtons();
+  setState("idle");
+  if (solves.length) timeEl.textContent = fmtSolve(solves[solves.length - 1]);
+  showScramble();
+  renderAll(false);
+})();
+</script>
+</body>
+</html>
